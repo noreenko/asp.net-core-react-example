@@ -1,4 +1,5 @@
 FROM mcr.microsoft.com/dotnet/sdk:5.0 AS dotnet-build
+EXPOSE 80 443
 WORKDIR /src
 COPY . /src
 RUN dotnet restore "./dotnet-react-example.csproj"
