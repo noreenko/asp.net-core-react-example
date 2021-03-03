@@ -1,36 +1,31 @@
-# Pull down an image from Docker Hub that includes the .NET core SDK: 
-# https://hub.docker.com/_/microsoft-dotnet-core-sdk
-# This is so we have all the tools necessary to compile the app.
-FROM mcr.microsoft.com/dotnet/core/sdk:3.1-buster AS build
+#See https://aka.ms/containerfastmode to understand how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
-# Fetch and install Node 10. Make sure to include the --yes parameter 
-# to automatically accept prompts during install, or it'll fail.
-RUN curl --silent --location https://deb.nodesource.com/setup_10.x | bash -
-RUN apt-get install --yes nodejs
+FROM mcr.microsoft.com/dotnet/aspnet:5.0-buster-slim AS base
+WORKDIR /app
+EXPOSE 80
+EXPOSE 443
 
-# Copy the source from your machine onto the container.
+FROM mcr.microsoft.com/dotnet/sdk:5.0-buster-slim AS build
 WORKDIR /src
-COPY . .
-
-# Install dependencies. 
-# https://docs.microsoft.com/en-us/dotnet/core/tools/dotnet-restore?tabs=netcore2x
+COPY ["dotnet-react-example.csproj", ""]
 RUN dotnet restore "./dotnet-react-example.csproj"
+COPY . .
+WORKDIR "/src/."
+RUN dotnet build "dotnet-react-example.csproj" -c Release -o /app/build
 
-# Compile, then pack the compiled app and dependencies into a deployable unit.
-# https://docs.microsoft.com/en-us/dotnet/core/tools/dotnet-publish?tabs=netcore21
+FROM build AS publish
 RUN dotnet publish "dotnet-react-example.csproj" -c Release -o /app/publish
 
-# Pull down an image from Docker Hub that includes only the ASP.NET core runtime:
-# https://hub.docker.com/_/microsoft-dotnet-core-aspnet/
-# We don't need the SDK anymore, so this will produce a lighter-weight image
-# that can still run the app.
-FROM mcr.microsoft.com/dotnet/core/aspnet:3.1-buster-slim
+# build react
+FROM node AS node-builder
+WORKDIR /node
+COPY ./ClientApp /node
+RUN npm install
+RUN npm build
 
-# Expose port 80 to your local machine so you can access the app.
-EXPOSE 80
-
-# Copy the published app to this new runtime-only container.
-COPY --from=build /app/publish .
-
-# To run the app, run `dotnet sample-app.dll`, which we just copied over.
+FROM base AS final
+WORKDIR /app
+RUN mkdir /app/wwwroot
+COPY --from=publish /app/publish .
+COPY --from=node-builder /node/build ./wwwroot
 ENTRYPOINT ["dotnet", "dotnet-react-example.dll"]
